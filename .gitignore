@@ -1,0 +1,6 @@
+sdgs.py
+synthcity.py
+data/
+.env_dev/
+__pycache__/
+workspace/
