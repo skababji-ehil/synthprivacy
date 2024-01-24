@@ -1,8 +1,6 @@
 import pandas as pd
 import numpy as np
-import hashlib
 import time
-import os
 from functools import partial
 from multiprocessing import Pool, cpu_count
 from sklearn.preprocessing import KBinsDiscretizer
@@ -12,92 +10,105 @@ import copy
 
 class MmbrshpRsk():
     
-    def __init__(self, real_df: pd.DataFrame , syn_df: pd.DataFrame):
+    def __init__(self, real_data: pd.DataFrame, population_size: int):
         """Calculates the membership privacy risk associated with synthetic data.
         
         Args:
-            real_df: Real Dataset without Unique Identifier column. 
-            syn_df: Synthetic Dataset with the same shape and variable names of the real dataset 
+            real_data: Real Dataset without Unique Identifier column. The header 'ID' is reserved, so ensure that no variable in the original dataset carries the same name.
+            population_size: The population size of from which the real dataset was sampled.
         
         """
-        assert real_df.shape == syn_df.shape, "Real and Synthetic dataset should have the same shape"
-        assert (real_df.columns == syn_df.columns).all(), "Real and Synthetic dataset should have the same variable names"
-        assert (real_df.dtypes == syn_df.dtypes).all(), "Real and Synthetic dataset should have the same variable types"
         
-        self.real_df=real_df
-        self.syn_df=syn_df
-    
-    def partition(self,  population_size: int):
+        assert isinstance(real_data, pd.DataFrame), "Input real data shall be Pandas datatframe"
+        assert population_size >= len(real_data), "Population size shall be larger than the provided real data"
+
+        self.real_data=real_data
+        self.population_size=population_size
+        
+        self.h=5
+        """ An integer representing the hamming distance threshold to be used when calculating the membership disclosure risk. A smaller number indicates a more conservative model when calculating the membership disclosure risk. A good value can the number of variables-2.
+        """
+        
+        self.quasiID=None
+        """ A list of the names of quais variables to be used in the calculation. If None, all variables will be used."""
+        
+        self.max_no_cores=None
+        """ Specifies the number of cores as either 'hi' for maximum number of cores, 'lo' for 5 cores or None for no multiprocessing.
+        """
+        
+        self.no_bins=20
+        self.seed=None #Enter None for random partitioning
+        self.rng=np.random.default_rng(self.seed)
+        self.train_data=self._partition()
+        
+    def _partition(self) -> pd.DataFrame:
         '''Partitions the REAL dataset into TRAINING and ATTACK datasets.
-        
-        Args:
-            population_size: The population size of from which the real dataset was sampled.
 
         Returns:
-            Training and attack data frames. Both dataframes includes an additional column 'ID' for record index track against the real data.
+            train_data: Dataset to be used for training a generative model.
         '''
-        real_data=copy.deepcopy(self.real_df)
+        real_data=copy.deepcopy(self.real_data)
         real_data['ID'] = range(len(real_data))    # add an id variable to real data
-        t = len(real_data) / population_size
-        idx_train, idx_attack=train_test_split(np.arange(len(real_data)),test_size=0.2-(t*0.2), train_size=0.8+(t*0.2)) 
+        t = len(real_data) / self.population_size
+        idx_train, idx_attack=train_test_split(np.arange(len(real_data)),test_size=0.2-(t*0.2), train_size=0.8+(t*0.2), random_state=self.seed) 
         train_data_w_id = real_data.iloc[idx_train,:]
         attack_data_w_id = real_data.iloc[idx_attack,:]
-        attack_data_w_id = pd.concat([attack_data_w_id, train_data_w_id.sample(int(np.ceil(t*len(real_data)*0.2)))], axis=0)
-        print({"No of Attack Records":len(attack_data_w_id), "No of of Attack Records in Training":int(np.ceil(t*len(real_data)*0.2))} )
+        attack_data_w_id = pd.concat([attack_data_w_id, train_data_w_id.sample(int(np.ceil(t*len(real_data)*0.2)), random_state=self.seed)], axis=0)
+        print(f"Partitioning resulted in total number of Attack Records= {len(attack_data_w_id)}, and the number of Attack Records in the training datasset= {int(np.ceil(t*len(real_data)*0.2))}")
         attack_data_w_id.reset_index(inplace=True, drop=True)
         train_data_w_id.reset_index(inplace=True, drop=True)
-        return train_data_w_id, attack_data_w_id
+        train_data=copy.deepcopy(train_data_w_id.drop('ID', inplace=False, axis=1))
+        train_data=train_data.sample(frac=1, random_state=self.seed).reset_index(drop=True)
+        self.train_data_w_id=train_data_w_id #Training data with an additional column 'ID' for tracking purposes.
+        self.attack_data_w_id=attack_data_w_id #Attack data with an additional column 'ID' for tracking purposes.
+        return train_data #Training data without ID
     
-    def calc_risk(self, population_size:int ,h: int, quasiID=None, max_n_cores=None, mmbr_bins=20):
+    def calc_risk(self,syn_data: pd.DataFrame) -> tuple:
         ''' Calculates the membership disclosure risk.
         
         Args:
-            population_size: The population size of from which the real dataset was sampled.
-            h: An integer representing the hamming distance threshold to be used when calculating the membership disclosure risk. A smaller number indicates a more conservative model when calculating the membership disclosure risk. A good value can the number of variables-2.
-
-
+            syn_df: Synthetic dataset generated by any model that is trained on the training dataset provided by this class.
+            
         Returns:
             Training and attack data frames. Both dataframes includes an additional column 'ID' for record index track against the real data.
         '''
         
-        assert isinstance(self.real_df, pd.DataFrame)
-        assert population_size >= len(self.real_df)
-        assert h > 0
+        assert (self.real_data.columns == syn_data.columns).all(), "Real and Synthetic dataset should have the same variable names"
+        assert (self.real_data.dtypes == syn_data.dtypes).all(), "Real and Synthetic dataset should have the same variable types"
+        assert isinstance(self.train_data_w_id, pd.DataFrame) and isinstance(self.attack_data_w_id, pd.DataFrame), "You need to partition the real dataset before calculating the membership disclosure risk"
         
-        print('Partitioning real data into training and attack datasets...')
-        train_data_w_id, attack_data_w_id=self.partition(population_size)
-        
-        if quasiID is None:
-            quasiID = list(self.real_df.columns)
+        assert self.h > 0
+        if self.quasiID is None:
+            self.quasiID = list(self.real_data.columns)
         
         # detect types of variables
-        dataTypes=self.type_detector(self.real_df.loc[:,quasiID]) #Note: Ensure that the output data types dataframe does NOT include the ID column 
+        dataTypes=self._type_detector(self.real_data.loc[:,self.quasiID]) #Note: Ensure that the output data types dataframe does NOT include the ID column 
         
         #discretize data 
-        syn_data_disrete=copy.deepcopy(self.syn_df)
-        attack_data_w_id_discrete=copy.deepcopy(attack_data_w_id)
+        syn_data_disrete=copy.deepcopy(syn_data)
+        attack_data_w_id_discrete=copy.deepcopy(self.attack_data_w_id)
         
         for k in dataTypes.loc[(dataTypes['Type'] == "Discrete") | (dataTypes['Type'] == "Continuous"), "Name"]:
-            discretizer = KBinsDiscretizer(n_bins=mmbr_bins, strategy='uniform', encode='ordinal')
+            discretizer = KBinsDiscretizer(n_bins=self.no_bins, strategy='uniform', encode='ordinal')
             syn_data_disrete[k] = discretizer.fit_transform(syn_data_disrete[k].values.reshape(-1,1))
             attack_data_w_id_discrete[k] = discretizer.transform(attack_data_w_id_discrete[k].values.reshape(-1,1)) #ID column will be excluded from discretization 
         
         #Calculate Membership Disclosure Risk
-        sim_match = self._hamming_min_match(attack_data_w_id_discrete, syn_data_disrete, quasiID, max_n_cores=max_n_cores)      
-        pp=np.nansum(sim_match["DIST"] <= h)
-        tp=np.nansum(np.in1d(attack_data_w_id_discrete['ID'][sim_match['DIST']<=h], train_data_w_id['ID'])) #True positive means a match (i.e. the attacker finds a records which means a patient is identified as a member in the training dataset.)
-        p=np.nansum(np.in1d(attack_data_w_id_discrete['ID'], train_data_w_id['ID']))
+        sim_match = self._hamming_min_match(attack_data_w_id_discrete, syn_data_disrete, self.quasiID, max_n_cores=self.max_no_cores)      
+        pp=np.nansum(sim_match["DIST"] <= self.h)
+        tp=np.nansum(np.in1d(attack_data_w_id_discrete['ID'][sim_match['DIST']<=self.h], self.train_data_w_id['ID'])) #True positive means a match (i.e. the attacker finds a records which means a patient is identified as a member in the training dataset.)
+        p=np.nansum(np.in1d(attack_data_w_id_discrete['ID'], self.train_data_w_id['ID']))
         precision = 0 if pp == 0 else tp / pp
         recall = tp / p
         f1_baseMh = 0 if (precision + recall) == 0 else (2 * precision * recall) / (precision + recall)
         fyard_baseMh = p / attack_data_w_id_discrete.shape[0] #naive_f1
         fnorm_baseMh = (f1_baseMh - fyard_baseMh) / (1 - fyard_baseMh) #rel_f1
-        
+        print(f"Relative F1={fnorm_baseMh} and Naive F1={fyard_baseMh}")
         return fnorm_baseMh, fyard_baseMh
     
     
 
-    def type_detector(self, dataTable: pd.DataFrame, IDCol = None) -> pd.DataFrame:
+    def _type_detector(self, dataTable: pd.DataFrame, IDCol = None) -> pd.DataFrame:
         '''Detects the type of each variable in the input table.
         
         Args:
@@ -150,10 +161,10 @@ class MmbrshpRsk():
         return Fits
 
 
-    def _which_min(self,vec):
+    def _which_min(self,vec: np.array) -> int:
         minima = np.where(vec == np.min(vec))[0] #the minma  is a vector in case there are more than one minima
         if len(minima) > 1:
-            minima = np.random.choice(minima, 1) 
+            minima = self.rng.choice(minima, 1) 
         return minima[0]
 
 
@@ -165,7 +176,7 @@ class MmbrshpRsk():
 
         
     def _hamming_min_match(self, attack_data: pd.DataFrame, syn_data: pd.DataFrame, QIDSet: list, max_n_cores: int) -> pd.DataFrame:
-        ''' Calculates the hamming distance matching table. process can be: hi for maximum number of cores, lo for 5 cores or  or None for no multiprocessing package
+        ''' Calculates the hamming distance matching table. 
         '''
         start=time.time()
         
