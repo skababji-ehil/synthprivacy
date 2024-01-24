@@ -13,7 +13,6 @@ from mmbrshp_rsk import MmbrshpRsk
 
 if __name__ == "__main__":
     
-    
     # load sample real data 
     real_df, y = load_diabetes(return_X_y=True, as_frame=True)
     real_df["target"] = y
@@ -26,5 +25,5 @@ if __name__ == "__main__":
     
     # calculate membership risk
     rsk=MmbrshpRsk(real_df, syn_df)
-    rsk.calc_risk(population_size=10*len(real_df), h=7)
-    pass
+    rel_f1, naive_f1=rsk.calc_risk(population_size=10*len(real_df), h=9)
+    print(rel_f1, naive_f1)
