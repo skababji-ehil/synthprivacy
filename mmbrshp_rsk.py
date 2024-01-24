@@ -30,14 +30,21 @@ class MmbrshpRsk():
         """
         
         self.quasiID=None
-        """ A list of the names of quais variables to be used in the calculation. If None, all variables will be used."""
+        """ A list of the names of quais variables to be used in the calculation. If None, all variables will be used.
+        """
         
         self.max_no_cores=None
         """ Specifies the number of cores as either 'hi' for maximum number of cores, 'lo' for 5 cores or None for no multiprocessing.
         """
         
         self.no_bins=20
+        """ The number of bins to discretize continuous and high cardinality categorical variables. 
+        """
+        
         self.seed=None #Enter None for random partitioning
+        """ An integer for fixing the seed to ensure reproducibility. Set to None if randomness is desired. 
+        """
+        
         self.rng=np.random.default_rng(self.seed)
         self.train_data=self._partition()
         
