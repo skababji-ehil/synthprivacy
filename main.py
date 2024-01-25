@@ -19,9 +19,10 @@ if __name__ == "__main__":
 
     # Construct membership disclosure object and get the training dataset 
     mmbr=MmbrshpRsk(real_data, population_size=10*len(real_data))
+    training_data=mmbr.train_data
 
     # Synthesize
-    loader = GenericDataLoader(mmbr.train_data)
+    loader = GenericDataLoader(training_data)
     syn_model = Plugins().get('marginal_distributions')
     syn_model.fit(loader)
     syn_data=syn_model.generate(count=len(real_data)).dataframe()
