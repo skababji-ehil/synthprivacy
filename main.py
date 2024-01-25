@@ -9,7 +9,7 @@ from synthcity.plugins import Plugins
 from synthcity.plugins.core.dataloader import GenericDataLoader
 log.add(sink=sys.stderr, level="INFO")
 
-from mmbrshp_rsk import MmbrshpRsk
+from src.synthprivacy.mmbrshp_rsk import MmbrshpRsk
 
 if __name__ == "__main__":
     

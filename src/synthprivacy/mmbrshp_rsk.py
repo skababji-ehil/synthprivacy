@@ -8,6 +8,8 @@ from sklearn.model_selection import train_test_split
 import copy
 
 
+
+
 class MmbrshpRsk():
     
     def __init__(self, real_data: pd.DataFrame, population_size: int):
@@ -41,7 +43,7 @@ class MmbrshpRsk():
         """ The number of bins to discretize continuous and high cardinality categorical variables. 
         """
         
-        self.seed=13 #Enter None for random partitioning
+        self.seed=13 
         """ An integer for fixing the seed to ensure reproducibility. Set to None if randomness is desired. 
         """
         
