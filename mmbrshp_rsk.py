@@ -14,7 +14,7 @@ class MmbrshpRsk():
         """Calculates the membership privacy risk associated with synthetic data.
         
         Args:
-            real_data: Real Dataset without Unique Identifier column. The header 'ID' is reserved, so ensure that no variable in the original dataset carries the same name.
+            real_data: Real Dataset as Pandas dataframe.
             population_size: The population size of from which the real dataset was sampled.
         
         """
@@ -25,8 +25,8 @@ class MmbrshpRsk():
         self.real_data=real_data
         self.population_size=population_size
         
-        self.h=5
-        """ An integer representing the hamming distance threshold to be used when calculating the membership disclosure risk. A smaller number indicates a more conservative model when calculating the membership disclosure risk. A good value can the number of variables-2.
+        self.h=10
+        """ An integer representing the hamming distance threshold to be used when calculating the membership disclosure risk.
         """
         
         self.quasiID=None
@@ -41,7 +41,7 @@ class MmbrshpRsk():
         """ The number of bins to discretize continuous and high cardinality categorical variables. 
         """
         
-        self.seed=None #Enter None for random partitioning
+        self.seed=13 #Enter None for random partitioning
         """ An integer for fixing the seed to ensure reproducibility. Set to None if randomness is desired. 
         """
         
@@ -55,19 +55,19 @@ class MmbrshpRsk():
             train_data: Dataset to be used for training a generative model.
         '''
         real_data=copy.deepcopy(self.real_data)
-        real_data['ID'] = range(len(real_data))    # add an id variable to real data
+        #real_data['ID'] = range(len(real_data))    # add an id variable to real data
         t = len(real_data) / self.population_size
         idx_train, idx_attack=train_test_split(np.arange(len(real_data)),test_size=0.2-(t*0.2), train_size=0.8+(t*0.2), random_state=self.seed) 
         train_data_w_id = real_data.iloc[idx_train,:]
         attack_data_w_id = real_data.iloc[idx_attack,:]
         attack_data_w_id = pd.concat([attack_data_w_id, train_data_w_id.sample(int(np.ceil(t*len(real_data)*0.2)), random_state=self.seed)], axis=0)
         print(f"Partitioning resulted in total number of Attack Records= {len(attack_data_w_id)}, and the number of Attack Records in the training datasset= {int(np.ceil(t*len(real_data)*0.2))}")
-        attack_data_w_id.reset_index(inplace=True, drop=True)
-        train_data_w_id.reset_index(inplace=True, drop=True)
-        train_data=copy.deepcopy(train_data_w_id.drop('ID', inplace=False, axis=1))
+        #attack_data_w_id.reset_index(inplace=True, drop=True)
+        #train_data_w_id.reset_index(inplace=True, drop=True)
+        train_data=copy.deepcopy(train_data_w_id)
         train_data=train_data.sample(frac=1, random_state=self.seed).reset_index(drop=True)
-        self.train_data_w_id=train_data_w_id #Training data with an additional column 'ID' for tracking purposes.
-        self.attack_data_w_id=attack_data_w_id #Attack data with an additional column 'ID' for tracking purposes.
+        self._train_data_w_id=train_data_w_id #Training data with an additional column 'ID' for tracking purposes.
+        self._attack_data_w_id=attack_data_w_id #Attack data with an additional column 'ID' for tracking purposes.
         return train_data #Training data without ID
     
     def calc_risk(self,syn_data: pd.DataFrame) -> tuple:
@@ -82,7 +82,7 @@ class MmbrshpRsk():
         
         assert (self.real_data.columns == syn_data.columns).all(), "Real and Synthetic dataset should have the same variable names"
         assert (self.real_data.dtypes == syn_data.dtypes).all(), "Real and Synthetic dataset should have the same variable types"
-        assert isinstance(self.train_data_w_id, pd.DataFrame) and isinstance(self.attack_data_w_id, pd.DataFrame), "You need to partition the real dataset before calculating the membership disclosure risk"
+        assert isinstance(self._train_data_w_id, pd.DataFrame) and isinstance(self._attack_data_w_id, pd.DataFrame), "You need to partition the real dataset before calculating the membership disclosure risk"
         
         assert self.h > 0
         if self.quasiID is None:
@@ -93,7 +93,7 @@ class MmbrshpRsk():
         
         #discretize data 
         syn_data_disrete=copy.deepcopy(syn_data)
-        attack_data_w_id_discrete=copy.deepcopy(self.attack_data_w_id)
+        attack_data_w_id_discrete=copy.deepcopy(self._attack_data_w_id)
         
         for k in dataTypes.loc[(dataTypes['Type'] == "Discrete") | (dataTypes['Type'] == "Continuous"), "Name"]:
             discretizer = KBinsDiscretizer(n_bins=self.no_bins, strategy='uniform', encode='ordinal')
@@ -103,8 +103,8 @@ class MmbrshpRsk():
         #Calculate Membership Disclosure Risk
         sim_match = self._hamming_min_match(attack_data_w_id_discrete, syn_data_disrete, self.quasiID, max_n_cores=self.max_no_cores)      
         pp=np.nansum(sim_match["DIST"] <= self.h)
-        tp=np.nansum(np.in1d(attack_data_w_id_discrete['ID'][sim_match['DIST']<=self.h], self.train_data_w_id['ID'])) #True positive means a match (i.e. the attacker finds a records which means a patient is identified as a member in the training dataset.)
-        p=np.nansum(np.in1d(attack_data_w_id_discrete['ID'], self.train_data_w_id['ID']))
+        tp=np.nansum(np.in1d(attack_data_w_id_discrete.index[sim_match['DIST']<=self.h], self._train_data_w_id.index)) #True positive means a match (i.e. the attacker finds a records which means a patient is identified as a member in the training dataset.)
+        p=np.nansum(np.in1d(attack_data_w_id_discrete.index, self._train_data_w_id.index))
         precision = 0 if pp == 0 else tp / pp
         recall = tp / p
         f1_baseMh = 0 if (precision + recall) == 0 else (2 * precision * recall) / (precision + recall)
