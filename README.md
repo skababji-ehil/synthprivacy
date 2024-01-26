@@ -7,9 +7,6 @@ El Emam K, Mosquera L, Fang X. Validating a membership disclosure metric for syn
 JAMIA Open. 2022 Oct 11;5(4):ooac083. doi: 10.1093/jamiaopen/ooac083. PMID: 36238080; PMCID: PMC9553223.
 ```
 
-An example is given in  ``main.py``. The example uses a dataset imported from the ```scikit-learn``` library and a generator from ```synthcity```. Clearly, you can replace these with your dataset and generative models respectively. 
+An example is given in  ``main.py``. The example uses a dataset imported from the ``scikit-learn`` library and a generator from ``synthcity``. Clearly, you can replace these with your dataset and generative models respectively.
 
-You first instantiate an object using the class ``MmbrshpRsk``. The class will partition the input real dataset (using the default parameters) and return a training dataset. Internally, the indices of the training observations are retained for further calculations. You use the training data with any generative model to generate your synthetic data. Finally, you pass the synthetic data to the previously defined ``MmbrshpRsk`` object to calculate  the F1 risk scores. Some parameters can be adjusted for risk calculations, e.g. the hamming distance threshold  ``h``. If you like to change these parameters, please make sure to change them in the class itself.  For further information, please refer to the comments in the script ``src/synthprivacy/mmbrshp_rsk.py``.
-
-
-
+You first instantiate an object using the class ``MmbrshpRsk``. The class will partition the input real dataset (using the default parameters) and return a training dataset. Internally, the indices of the training observations are retained for further calculations. You use the training data with any generative model to generate your synthetic data. Finally, you pass the synthetic data to the previously defined ``MmbrshpRsk`` object to calculate  the F1 risk scores. Some parameters can be adjusted for risk calculations, e.g. the hamming distance threshold  ``h``. Selected parameters can be passed as arguments to the class.  For further information, please refer to the comments in the script ``src/synthprivacy/mmbrshp_rsk.py``.

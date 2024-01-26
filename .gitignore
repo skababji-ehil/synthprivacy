@@ -18,4 +18,5 @@ _static/
 docs/_build/doctrees/
 docs/_build/latex/*
 !docs/_build/latex/synthprivacy.pdf
+.env_dev2/
 

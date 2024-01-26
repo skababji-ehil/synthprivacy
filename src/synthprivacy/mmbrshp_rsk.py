@@ -8,16 +8,6 @@ from sklearn.model_selection import train_test_split
 import copy
 
 
-def test_fnt(a,b):
-    """ A test function only.
-    
-    Args:
-        a: something
-        b: otherthing
-    
-    """
-    pass
-
 class MmbrshpRsk():
     
     def __init__(self, real_data: pd.DataFrame, population_size: int, h=10, seed=13, max_no_cores=None ):
