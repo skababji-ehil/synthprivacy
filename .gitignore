@@ -4,7 +4,6 @@ data/
 .env_dev/
 **/__pycache__/
 workspace/
-docs/_build
 docs/_static
 docs/_template
 docs/Makefile
@@ -15,5 +14,8 @@ dist/
 *.egg-info/
 _templates/
 _static/
-docs/
+
+docs/_build/doctrees/
+docs/_build/latex/*
+!docs/_build/latex/synthprivacy.pdf
 
