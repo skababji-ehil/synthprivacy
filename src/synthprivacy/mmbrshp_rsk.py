@@ -23,7 +23,7 @@ class MmbrshpRsk():
         """
         
         assert isinstance(real_data, pd.DataFrame), "Input real data shall be Pandas datatframe"
-        assert population_size >= len(real_data), "Population size shall be larger than the provided real data"
+        assert population_size > len(real_data), "Population size shall be larger than the provided real data"
 
         self.real_data=real_data
         self.population_size=population_size
@@ -69,6 +69,7 @@ class MmbrshpRsk():
         train_data=train_data.sample(frac=1, random_state=self.seed).reset_index(drop=True)
         self._train_data_w_id=train_data_w_id #Training data with an additional column 'ID' for tracking purposes.
         self._attack_data_w_id=attack_data_w_id #Attack data with an additional column 'ID' for tracking purposes.
+        self.t=t
         return train_data #Training data without ID
     
     def calc_risk(self,syn_data: pd.DataFrame) -> tuple:
@@ -110,7 +111,7 @@ class MmbrshpRsk():
         precision = 0 if pp == 0 else tp / pp
         recall = tp / p
         f1_baseMh = 0 if (precision + recall) == 0 else (2 * precision * recall) / (precision + recall)
-        fyard_baseMh = p / attack_data_w_id_discrete.shape[0] #naive_f1
+        fyard_baseMh = 2*self.t/(1+self.t) #naive_f1 #per Xi and theory
         fnorm_baseMh = (f1_baseMh - fyard_baseMh) / (1 - fyard_baseMh) #rel_f1
         print(f"Relative F1={fnorm_baseMh} and Naive F1={fyard_baseMh}")
         return fnorm_baseMh, fyard_baseMh
